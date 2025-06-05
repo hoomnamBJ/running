@@ -79,7 +79,6 @@
       }
 
       currentSet = 1;
-      runHistory = [];
       isRunning = true;
       runPhase();
     }
@@ -134,7 +133,6 @@
       isPaused = false;
       currentSet = 0;
       document.getElementById("status").textContent = "준비 완료";
-      runHistory = [];
       drawChart();
     }
 
