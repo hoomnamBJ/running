@@ -44,7 +44,7 @@
 
   <input type="number" id="runTime" placeholder="달리기 시간 (초)" min="1" />
   <br />
-  <input type="number" id="walkTime" placeholder="건기 시간 (초)" min="1" />
+  <input type="number" id="walkTime" placeholder="걷기 시간 (초)" min="1" />
   <br />
   <input type="number" id="repeatCount" placeholder="반복 횟수" min="1" />
   <br />
@@ -97,7 +97,7 @@
 
     function walkPhase() {
       if (!isRunning) return;
-      document.getElementById("status").textContent = `🚶‍♂️ ${currentSet}세트 - 건기`;
+      document.getElementById("status").textContent = `🚶‍♂️ ${currentSet}세트 - 걷기`;
       speak("걷기 시작!");
       intervalId = setTimeout(() => {
         if (isPaused) return;
