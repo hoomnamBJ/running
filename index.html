@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>인터벌 러닝 타이머</title>
+  <title>인터벌 러닝 타이머 - 거리 기반</title>
   <link rel="manifest" href="manifest.json">
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <style>
@@ -13,11 +13,11 @@
       padding: 40px;
       background: linear-gradient(to bottom right, #e0f7fa, #ffffff);
     }
-    input {
+    input, select {
       font-size: 18px;
       margin: 10px;
       padding: 8px;
-      width: 200px;
+      width: 220px;
     }
     button {
       font-size: 18px;
@@ -33,41 +33,70 @@
       margin-top: 30px;
       font-size: 24px;
     }
-    canvas {
+    canvas, #map {
       margin-top: 40px;
       max-width: 600px;
+      height: 300px;
     }
-    #summary {
-      margin-top: 10px;
-      font-size: 16px;
-      color: #444;
+    #leafletMap {
+      width: 100%;
+      height: 300px;
+      margin-top: 40px;
     }
   </style>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
+  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 </head>
 <body>
-  <h1>🏃‍♀️ 인터벌 러닝 타이머</h1>
+  <h1>📍 거리 기반 인터벌 타이머</h1>
 
-  <input type="number" id="runTime" placeholder="달리기 시간 (초)" min="1" />
+  <select id="mode">
+    <option value="time">시간 기반</option>
+    <option value="distance">거리 기반</option>
+  </select>
   <br />
-  <input type="number" id="walkTime" placeholder="걷기 시간 (초)" min="1" />
-  <br />
+
+  <div id="timeInputs">
+    <input type="number" id="runTime" placeholder="달리기 시간 (초)" min="1" />
+    <br />
+    <input type="number" id="walkTime" placeholder="걷기 시간 (초)" min="1" />
+  </div>
+
+  <div id="distanceInputs" style="display:none;">
+    <input type="number" id="runDistance" placeholder="달리기 거리 (m)" min="10" />
+    <br />
+    <input type="number" id="walkDistance" placeholder="걷기 거리 (m)" min="10" />
+  </div>
+
   <input type="number" id="repeatCount" placeholder="반복 횟수" min="1" />
   <br />
   <button onclick="startInterval()">⏱️ 시작</button>
-  <button onclick="pauseInterval()">⏸️ 일시정지</button>
   <button onclick="resetInterval()">❌ 종료</button>
 
   <div id="status">준비 완료</div>
-  <div id="summary"></div>
-  <canvas id="lineChart" height="150"></canvas>
-  <h3>📆 주간 운동 기록</h3>
-  <canvas id="weekChart" height="150"></canvas>
+  <canvas id="distanceChart"></canvas>
+  <div id="leafletMap"></div>
+  <a id="downloadLink" style="display:none" download="route.csv">📥 경로 저장</a>
 
   <script>
-    let currentSet = 0, totalSets = 0, isPaused = false;
-    let intervalId, isRunning = false;
+    let mode = "time";
+    let currentSet = 0, totalSets = 0;
+    let runPhaseActive = true;
+    let watchId = null;
+    let startCoords = null;
+    let runDist = 0, walkDist = 0;
     let runTime = 0, walkTime = 0;
-    let runHistory = JSON.parse(localStorage.getItem("runHistory") || "[]");
+    let intervalId;
+    let isRunning = false;
+    let totalDistance = 0;
+    let trackCoords = [];
+    let map, marker, polyline;
+
+    document.getElementById("mode").addEventListener("change", (e) => {
+      mode = e.target.value;
+      document.getElementById("timeInputs").style.display = mode === "time" ? "block" : "none";
+      document.getElementById("distanceInputs").style.display = mode === "distance" ? "block" : "none";
+    });
 
     function speak(text) {
       const msg = new SpeechSynthesisUtterance(text);
@@ -75,161 +104,171 @@
       window.speechSynthesis.speak(msg);
     }
 
-    async function requestWakeLock() {
-      if ('wakeLock' in navigator) {
-        try {
-          await navigator.wakeLock.request('screen');
-        } catch (e) {
-          console.log("WakeLock 실패:", e);
-        }
-      }
-    }
-
     function startInterval() {
       if (isRunning) return;
-      runTime = parseInt(document.getElementById("runTime").value);
-      walkTime = parseInt(document.getElementById("walkTime").value);
-      totalSets = parseInt(document.getElementById("repeatCount").value);
-
-      if (isNaN(runTime) || isNaN(walkTime) || isNaN(totalSets)) {
-        alert("모든 값을 입력해주세요!");
-        return;
-      }
-
       currentSet = 1;
-      isRunning = true;
-      requestWakeLock();
-      runPhase();
+      totalDistance = 0;
+      trackCoords = [];
+      drawLeafletMap();
+      totalSets = parseInt(document.getElementById("repeatCount").value);
+      if (isNaN(totalSets)) return alert("반복 횟수를 입력해주세요");
+
+      if (mode === "time") {
+        runTime = parseInt(document.getElementById("runTime").value);
+        walkTime = parseInt(document.getElementById("walkTime").value);
+        if (isNaN(runTime) || isNaN(walkTime)) return alert("시간을 모두 입력해주세요");
+        isRunning = true;
+        runTimePhase();
+      } else {
+        runDist = parseFloat(document.getElementById("runDistance").value);
+        walkDist = parseFloat(document.getElementById("walkDistance").value);
+        if (isNaN(runDist) || isNaN(walkDist)) return alert("거리를 모두 입력해주세요");
+        isRunning = true;
+        runDistancePhase();
+      }
     }
 
-    function runPhase() {
-      if (!isRunning) return;
+    function runTimePhase() {
       document.getElementById("status").textContent = `🏃‍♂️ ${currentSet}세트 - 달리기!`;
-      speak(`${currentSet}세트, 달리기 시작!`);
+      speak("달리기 시작!");
       intervalId = setTimeout(() => {
-        if (isPaused) return;
-        runHistory.push({ date: today(), set: currentSet, phase: '달리기', duration: runTime });
-        walkPhase();
+        walkTimePhase();
       }, runTime * 1000);
     }
 
-    function walkPhase() {
-      if (!isRunning) return;
+    function walkTimePhase() {
       document.getElementById("status").textContent = `🚶‍♂️ ${currentSet}세트 - 걷기`;
       speak("걷기 시작!");
       intervalId = setTimeout(() => {
-        if (isPaused) return;
-        runHistory.push({ date: today(), set: currentSet, phase: '걷기', duration: walkTime });
         currentSet++;
         if (currentSet <= totalSets) {
-          runPhase();
+          runTimePhase();
         } else {
-          document.getElementById("status").textContent = "🎉 종료! 수고하셨습니다!";
-          speak("인터벌 러닝 종료! 수고하셨습니다!");
-          isRunning = false;
-          localStorage.setItem("runHistory", JSON.stringify(runHistory));
-          drawChart();
-          showSummary();
-          drawWeekChart();
+          endSession();
         }
       }, walkTime * 1000);
     }
 
-    function pauseInterval() {
-      if (!isRunning) return;
-      isPaused = !isPaused;
-      if (isPaused) {
-        clearTimeout(intervalId);
-        document.getElementById("status").textContent = "⏸️ 일시정지됨";
-        speak("일시정지 되었습니다");
-      } else {
-        speak("다시 시작합니다");
-        document.getElementById("status").textContent = `${currentSet}세트 재개...`;
-        runPhase();
-      }
+    function runDistancePhase() {
+      document.getElementById("status").textContent = `🏃‍♂️ ${currentSet}세트 - 달리기!`;
+      speak("달리기 시작!");
+      runPhaseActive = true;
+      startTracking(runDist, walkDistancePhase);
+    }
+
+    function walkDistancePhase() {
+      document.getElementById("status").textContent = `🚶‍♂️ ${currentSet}세트 - 걷기`;
+      speak("걷기 시작!");
+      runPhaseActive = false;
+      startTracking(walkDist, () => {
+        currentSet++;
+        if (currentSet <= totalSets) {
+          runDistancePhase();
+        } else {
+          endSession();
+        }
+      });
+    }
+
+    function startTracking(targetDistance, callback) {
+      startCoords = null;
+      if (watchId) navigator.geolocation.clearWatch(watchId);
+      watchId = navigator.geolocation.watchPosition(pos => {
+        const { latitude, longitude } = pos.coords;
+        trackCoords.push([latitude, longitude]);
+        if (!startCoords) {
+          startCoords = { latitude, longitude };
+          map.setView([latitude, longitude], 16);
+          marker.setLatLng([latitude, longitude]);
+          polyline.addLatLng([latitude, longitude]);
+        } else {
+          const dist = getDistance(startCoords.latitude, startCoords.longitude, latitude, longitude);
+          totalDistance += dist;
+          drawDistanceChart();
+          marker.setLatLng([latitude, longitude]);
+          polyline.addLatLng([latitude, longitude]);
+          if (dist >= targetDistance) {
+            navigator.geolocation.clearWatch(watchId);
+            callback();
+          }
+        }
+      }, err => {
+        alert("GPS 오류: 위치를 가져올 수 없습니다.");
+      }, {
+        enableHighAccuracy: true,
+        maximumAge: 1000,
+        timeout: 10000
+      });
+    }
+
+    function getDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371000;
+      const dLat = (lat2 - lat1) * Math.PI / 180;
+      const dLon = (lon2 - lon1) * Math.PI / 180;
+      const a = Math.sin(dLat/2) * Math.sin(dLat/2) +
+                Math.cos(lat1 * Math.PI/180) * Math.cos(lat2 * Math.PI/180) *
+                Math.sin(dLon/2) * Math.sin(dLon/2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+      return R * c;
+    }
+
+    function endSession() {
+      isRunning = false;
+      document.getElementById("status").textContent = "🎉 인터벌 완료!";
+      speak("인터벌 러닝 완료!");
+      generateCSV();
     }
 
     function resetInterval() {
       clearTimeout(intervalId);
+      if (watchId) navigator.geolocation.clearWatch(watchId);
       isRunning = false;
-      isPaused = false;
-      currentSet = 0;
       document.getElementById("status").textContent = "준비 완료";
-      drawChart();
-      showSummary();
-      drawWeekChart();
+      totalDistance = 0;
+      trackCoords = [];
+      drawDistanceChart();
+      drawLeafletMap();
+      document.getElementById("downloadLink").style.display = "none";
     }
 
-    function today() {
-      return new Date().toISOString().split('T')[0];
-    }
-
-    function drawChart() {
-      const ctx = document.getElementById('lineChart').getContext('2d');
-      const labels = runHistory.map((item, index) => `${item.set}세트 ${item.phase}`);
-      const data = runHistory.map(item => item.duration);
-      if (window.intervalChart) window.intervalChart.destroy();
-      window.intervalChart = new Chart(ctx, {
-        type: 'line',
+    function drawDistanceChart() {
+      const ctx = document.getElementById("distanceChart").getContext("2d");
+      const data = trackCoords.map((_, i) => i * 10);
+      const values = trackCoords.map((_, i) => (i + 1) * (totalDistance / trackCoords.length));
+      if (window.distChart) window.distChart.destroy();
+      window.distChart = new Chart(ctx, {
+        type: "line",
         data: {
-          labels: labels,
+          labels: data,
           datasets: [{
-            label: '구간 시간 (초)',
-            data: data,
-            fill: false,
-            borderColor: '#00b894',
-            tension: 0.3
+            label: "누적 거리 (m)",
+            data: values,
+            borderColor: "#00b894",
+            tension: 0.3,
+            fill: false
           }]
-        },
-        options: {
-          responsive: true,
-          scales: {
-            y: { beginAtZero: true }
-          }
         }
       });
     }
 
-    function showSummary() {
-      const todayStr = today();
-      const todayRecords = runHistory.filter(r => r.date === todayStr);
-      const totalSets = [...new Set(todayRecords.map(r => r.set))].length;
-      const totalTime = todayRecords.reduce((sum, r) => sum + r.duration, 0);
-      document.getElementById("summary").textContent = `오늘: ${totalSets}세트 / 총 ${totalTime}초`;
+    function drawLeafletMap() {
+      if (map) map.remove();
+      map = L.map('leafletMap').setView([37.5665, 126.9780], 13);
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        attribution: '&copy; OpenStreetMap contributors'
+      }).addTo(map);
+      marker = L.marker([37.5665, 126.9780]).addTo(map);
+      polyline = L.polyline([], { color: '#00b894' }).addTo(map);
     }
 
-    function drawWeekChart() {
-      const ctx = document.getElementById('weekChart').getContext('2d');
-      const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
-      const dayCounts = new Array(7).fill(0);
-      runHistory.forEach(r => {
-        const d = new Date(r.date);
-        const day = d.getDay();
-        if (r.phase === '달리기') dayCounts[day]++;
-      });
-      if (window.weekChart) window.weekChart.destroy();
-      window.weekChart = new Chart(ctx, {
-        type: 'bar',
-        data: {
-          labels: weekDays,
-          datasets: [{
-            label: '세트 수',
-            data: dayCounts,
-            backgroundColor: '#00b894'
-          }]
-        },
-        options: {
-          responsive: true,
-          scales: {
-            y: { beginAtZero: true }
-          }
-        }
-      });
+    function generateCSV() {
+      let csv = "위도,경도\n" + trackCoords.map(p => p.join(",")).join("\n");
+      const blob = new Blob([csv], { type: "text/csv" });
+      const url = URL.createObjectURL(blob);
+      const link = document.getElementById("downloadLink");
+      link.href = url;
+      link.style.display = "inline";
     }
-
-    showSummary();
-    drawChart();
-    drawWeekChart();
 
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('service-worker.js');
