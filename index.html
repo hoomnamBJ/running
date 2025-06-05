@@ -53,8 +53,6 @@
   <br />
   <input type="number" id="repeatCount" placeholder="반복 횟수" min="1" />
   <br />
-  <input type="number" id="goalCount" placeholder="오늘 목표 세트 수" min="1" />
-  <br />
   <button onclick="startInterval()">⏱️ 시작</button>
   <button onclick="pauseInterval()">⏸️ 일시정지</button>
   <button onclick="resetInterval()">❌ 종료</button>
@@ -66,7 +64,7 @@
   <script>
     let currentSet = 0, totalSets = 0, isPaused = false;
     let intervalId, isRunning = false;
-    let runTime = 0, walkTime = 0, goalCount = 0;
+    let runTime = 0, walkTime = 0;
     let runHistory = JSON.parse(localStorage.getItem("runHistory") || "[]");
 
     function speak(text) {
@@ -90,7 +88,6 @@
       runTime = parseInt(document.getElementById("runTime").value);
       walkTime = parseInt(document.getElementById("walkTime").value);
       totalSets = parseInt(document.getElementById("repeatCount").value);
-      goalCount = parseInt(document.getElementById("goalCount").value) || 0;
 
       if (isNaN(runTime) || isNaN(walkTime) || isNaN(totalSets)) {
         alert("모든 값을 입력해주세요!");
@@ -127,9 +124,6 @@
         } else {
           document.getElementById("status").textContent = "🎉 종료! 수고하셨습니다!";
           speak("인터벌 러닝 종료! 수고하셨습니다!");
-          if (goalCount > 0 && totalSets >= goalCount) {
-            speak("목표 달성! 최고예요!");
-          }
           isRunning = false;
           localStorage.setItem("runHistory", JSON.stringify(runHistory));
           drawChart();
