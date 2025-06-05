@@ -1,0 +1,173 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>인터벌 러닝 타이머</title>
+  <link rel="manifest" href="manifest.json">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <style>
+    body {
+      font-family: sans-serif;
+      text-align: center;
+      padding: 40px;
+      background: linear-gradient(to bottom right, #e0f7fa, #ffffff);
+    }
+    input {
+      font-size: 18px;
+      margin: 10px;
+      padding: 8px;
+      width: 200px;
+    }
+    button {
+      font-size: 18px;
+      padding: 10px 20px;
+      margin: 5px;
+      background-color: #00b894;
+      color: white;
+      border: none;
+      border-radius: 10px;
+      cursor: pointer;
+    }
+    #status {
+      margin-top: 30px;
+      font-size: 24px;
+    }
+    canvas {
+      margin-top: 40px;
+      max-width: 600px;
+    }
+  </style>
+</head>
+<body>
+  <h1>🏃‍♀️ 인터벌 러닝 타이머</h1>
+
+  <input type="number" id="runTime" placeholder="달리기 시간 (초)" min="1" />
+  <br />
+  <input type="number" id="walkTime" placeholder="건기 시간 (초)" min="1" />
+  <br />
+  <input type="number" id="repeatCount" placeholder="반복 횟수" min="1" />
+  <br />
+  <button onclick="startInterval()">⏱️ 시작</button>
+  <button onclick="pauseInterval()">⏸️ 일시정지</button>
+  <button onclick="resetInterval()">❌ 종료</button>
+
+  <div id="status">준비 완료</div>
+  <canvas id="lineChart" height="150"></canvas>
+
+  <script>
+    let currentSet = 0, totalSets = 0, isPaused = false;
+    let intervalId, isRunning = false;
+    let runTime = 0, walkTime = 0;
+    let runHistory = [];
+
+    function speak(text) {
+      const msg = new SpeechSynthesisUtterance(text);
+      msg.lang = 'ko-KR';
+      window.speechSynthesis.speak(msg);
+    }
+
+    function startInterval() {
+      if (isRunning) return;
+      runTime = parseInt(document.getElementById("runTime").value);
+      walkTime = parseInt(document.getElementById("walkTime").value);
+      totalSets = parseInt(document.getElementById("repeatCount").value);
+
+      if (isNaN(runTime) || isNaN(walkTime) || isNaN(totalSets)) {
+        alert("모든 값을 입력해주세요!");
+        return;
+      }
+
+      currentSet = 1;
+      runHistory = [];
+      isRunning = true;
+      runPhase();
+    }
+
+    function runPhase() {
+      if (!isRunning) return;
+      document.getElementById("status").textContent = `🏃‍♂️ ${currentSet}세트 - 달리기!`;
+      speak(`${currentSet}세트, 달리기 시작!`);
+      intervalId = setTimeout(() => {
+        if (isPaused) return;
+        runHistory.push({ set: currentSet, phase: '달리기', duration: runTime });
+        walkPhase();
+      }, runTime * 1000);
+    }
+
+    function walkPhase() {
+      if (!isRunning) return;
+      document.getElementById("status").textContent = `🚶‍♂️ ${currentSet}세트 - 건기`;
+      speak("걷기 시작!");
+      intervalId = setTimeout(() => {
+        if (isPaused) return;
+        runHistory.push({ set: currentSet, phase: '걷기', duration: walkTime });
+        currentSet++;
+        if (currentSet <= totalSets) {
+          runPhase();
+        } else {
+          document.getElementById("status").textContent = "🎉 종료! 수고하셨습니다!";
+          speak("인터벌 러닝 종료! 수고하셨습니다!");
+          isRunning = false;
+          drawChart();
+        }
+      }, walkTime * 1000);
+    }
+
+    function pauseInterval() {
+      if (!isRunning) return;
+      isPaused = !isPaused;
+      if (isPaused) {
+        clearTimeout(intervalId);
+        document.getElementById("status").textContent = "⏸️ 일시정지됨";
+        speak("일시정지 되었습니다");
+      } else {
+        speak("다시 시작합니다");
+        document.getElementById("status").textContent = `${currentSet}세트 재개...`;
+        runPhase();
+      }
+    }
+
+    function resetInterval() {
+      clearTimeout(intervalId);
+      isRunning = false;
+      isPaused = false;
+      currentSet = 0;
+      document.getElementById("status").textContent = "준비 완료";
+      runHistory = [];
+      drawChart();
+    }
+
+    function drawChart() {
+      const ctx = document.getElementById('lineChart').getContext('2d');
+      const labels = runHistory.map((item, index) => `${item.set}세트 ${item.phase}`);
+      const data = runHistory.map(item => item.duration);
+      if (window.intervalChart) window.intervalChart.destroy();
+      window.intervalChart = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: '구간 시간 (초)',
+            data: data,
+            fill: false,
+            borderColor: '#00b894',
+            tension: 0.3
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      });
+    }
+
+    // 서비스워커 등록 (PWA)
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.register('service-worker.js');
+    }
+  </script>
+</body>
+</html>

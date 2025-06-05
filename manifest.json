@@ -1,0 +1,20 @@
+{
+  "name": "인터벌 러닝 타이머",
+  "short_name": "러닝타이머",
+  "start_url": "./",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#00b894",
+  "icons": [
+    {
+      "src": "icon192_running.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "icon512_running.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    }
+  ]
+}
