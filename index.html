@@ -38,14 +38,7 @@
       max-width: 600px;
       height: 300px;
     }
-    #leafletMap {
-      width: 100%;
-      height: 300px;
-      margin-top: 40px;
-    }
   </style>
-  <link rel="stylesheet" href="https://unpkg.com/leaflet/dist/leaflet.css" />
-  <script src="https://unpkg.com/leaflet/dist/leaflet.js"></script>
 </head>
 <body>
   <h1>📍 거리 기반 인터벌 타이머</h1>
@@ -75,7 +68,7 @@
 
   <div id="status">준비 완료</div>
   <canvas id="distanceChart"></canvas>
-  <div id="leafletMap"></div>
+  <div id="map"></div>
   <a id="downloadLink" style="display:none" download="route.csv">📥 경로 저장</a>
 
   <script>
@@ -90,7 +83,6 @@
     let isRunning = false;
     let totalDistance = 0;
     let trackCoords = [];
-    let map, marker, polyline;
 
     document.getElementById("mode").addEventListener("change", (e) => {
       mode = e.target.value;
@@ -109,7 +101,7 @@
       currentSet = 1;
       totalDistance = 0;
       trackCoords = [];
-      drawLeafletMap();
+      drawMap();
       totalSets = parseInt(document.getElementById("repeatCount").value);
       if (isNaN(totalSets)) return alert("반복 횟수를 입력해주세요");
 
@@ -178,15 +170,11 @@
         trackCoords.push([latitude, longitude]);
         if (!startCoords) {
           startCoords = { latitude, longitude };
-          map.setView([latitude, longitude], 16);
-          marker.setLatLng([latitude, longitude]);
-          polyline.addLatLng([latitude, longitude]);
         } else {
           const dist = getDistance(startCoords.latitude, startCoords.longitude, latitude, longitude);
           totalDistance += dist;
           drawDistanceChart();
-          marker.setLatLng([latitude, longitude]);
-          polyline.addLatLng([latitude, longitude]);
+          drawMap();
           if (dist >= targetDistance) {
             navigator.geolocation.clearWatch(watchId);
             callback();
@@ -227,7 +215,7 @@
       totalDistance = 0;
       trackCoords = [];
       drawDistanceChart();
-      drawLeafletMap();
+      drawMap();
       document.getElementById("downloadLink").style.display = "none";
     }
 
@@ -251,14 +239,18 @@
       });
     }
 
-    function drawLeafletMap() {
-      if (map) map.remove();
-      map = L.map('leafletMap').setView([37.5665, 126.9780], 13);
-      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-        attribution: '&copy; OpenStreetMap contributors'
-      }).addTo(map);
-      marker = L.marker([37.5665, 126.9780]).addTo(map);
-      polyline = L.polyline([], { color: '#00b894' }).addTo(map);
+    function drawMap() {
+      const container = document.getElementById("map");
+      container.innerHTML = "";
+      if (!trackCoords.length) return;
+      const map = document.createElement("iframe");
+      const path = trackCoords.map(p => p.join(",")).join("|");
+      const url = `https://maps.googleapis.com/maps/api/staticmap?size=600x300&path=color:0x00b894ff|weight:4|${path}&key=YOUR_API_KEY`;
+      map.src = url;
+      map.width = "100%";
+      map.height = "300";
+      map.frameBorder = "0";
+      container.appendChild(map);
     }
 
     function generateCSV() {
