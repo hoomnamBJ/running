@@ -37,6 +37,11 @@
       margin-top: 40px;
       max-width: 600px;
     }
+    #summary {
+      margin-top: 10px;
+      font-size: 16px;
+      color: #444;
+    }
   </style>
 </head>
 <body>
@@ -48,18 +53,21 @@
   <br />
   <input type="number" id="repeatCount" placeholder="반복 횟수" min="1" />
   <br />
+  <input type="number" id="goalCount" placeholder="오늘 목표 세트 수" min="1" />
+  <br />
   <button onclick="startInterval()">⏱️ 시작</button>
   <button onclick="pauseInterval()">⏸️ 일시정지</button>
   <button onclick="resetInterval()">❌ 종료</button>
 
   <div id="status">준비 완료</div>
+  <div id="summary"></div>
   <canvas id="lineChart" height="150"></canvas>
 
   <script>
     let currentSet = 0, totalSets = 0, isPaused = false;
     let intervalId, isRunning = false;
-    let runTime = 0, walkTime = 0;
-    let runHistory = [];
+    let runTime = 0, walkTime = 0, goalCount = 0;
+    let runHistory = JSON.parse(localStorage.getItem("runHistory") || "[]");
 
     function speak(text) {
       const msg = new SpeechSynthesisUtterance(text);
@@ -67,11 +75,22 @@
       window.speechSynthesis.speak(msg);
     }
 
+    async function requestWakeLock() {
+      if ('wakeLock' in navigator) {
+        try {
+          await navigator.wakeLock.request('screen');
+        } catch (e) {
+          console.log("WakeLock 실패:", e);
+        }
+      }
+    }
+
     function startInterval() {
       if (isRunning) return;
       runTime = parseInt(document.getElementById("runTime").value);
       walkTime = parseInt(document.getElementById("walkTime").value);
       totalSets = parseInt(document.getElementById("repeatCount").value);
+      goalCount = parseInt(document.getElementById("goalCount").value) || 0;
 
       if (isNaN(runTime) || isNaN(walkTime) || isNaN(totalSets)) {
         alert("모든 값을 입력해주세요!");
@@ -80,6 +99,7 @@
 
       currentSet = 1;
       isRunning = true;
+      requestWakeLock();
       runPhase();
     }
 
@@ -89,7 +109,7 @@
       speak(`${currentSet}세트, 달리기 시작!`);
       intervalId = setTimeout(() => {
         if (isPaused) return;
-        runHistory.push({ set: currentSet, phase: '달리기', duration: runTime });
+        runHistory.push({ date: today(), set: currentSet, phase: '달리기', duration: runTime });
         walkPhase();
       }, runTime * 1000);
     }
@@ -100,15 +120,20 @@
       speak("걷기 시작!");
       intervalId = setTimeout(() => {
         if (isPaused) return;
-        runHistory.push({ set: currentSet, phase: '걷기', duration: walkTime });
+        runHistory.push({ date: today(), set: currentSet, phase: '걷기', duration: walkTime });
         currentSet++;
         if (currentSet <= totalSets) {
           runPhase();
         } else {
           document.getElementById("status").textContent = "🎉 종료! 수고하셨습니다!";
           speak("인터벌 러닝 종료! 수고하셨습니다!");
+          if (goalCount > 0 && totalSets >= goalCount) {
+            speak("목표 달성! 최고예요!");
+          }
           isRunning = false;
+          localStorage.setItem("runHistory", JSON.stringify(runHistory));
           drawChart();
+          showSummary();
         }
       }, walkTime * 1000);
     }
@@ -134,6 +159,11 @@
       currentSet = 0;
       document.getElementById("status").textContent = "준비 완료";
       drawChart();
+      showSummary();
+    }
+
+    function today() {
+      return new Date().toISOString().split('T')[0];
     }
 
     function drawChart() {
@@ -161,6 +191,17 @@
         }
       });
     }
+
+    function showSummary() {
+      const todayStr = today();
+      const todayRecords = runHistory.filter(r => r.date === todayStr);
+      const totalSets = [...new Set(todayRecords.map(r => r.set))].length;
+      const totalTime = todayRecords.reduce((sum, r) => sum + r.duration, 0);
+      document.getElementById("summary").textContent = `오늘: ${totalSets}세트 / 총 ${totalTime}초`;
+    }
+
+    showSummary();
+    drawChart();
 
     // 서비스워커 등록 (PWA)
     if ('serviceWorker' in navigator) {
