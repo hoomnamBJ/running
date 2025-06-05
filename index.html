@@ -60,6 +60,8 @@
   <div id="status">준비 완료</div>
   <div id="summary"></div>
   <canvas id="lineChart" height="150"></canvas>
+  <h3>📆 주간 운동 기록</h3>
+  <canvas id="weekChart" height="150"></canvas>
 
   <script>
     let currentSet = 0, totalSets = 0, isPaused = false;
@@ -128,6 +130,7 @@
           localStorage.setItem("runHistory", JSON.stringify(runHistory));
           drawChart();
           showSummary();
+          drawWeekChart();
         }
       }, walkTime * 1000);
     }
@@ -154,6 +157,7 @@
       document.getElementById("status").textContent = "준비 완료";
       drawChart();
       showSummary();
+      drawWeekChart();
     }
 
     function today() {
@@ -194,10 +198,39 @@
       document.getElementById("summary").textContent = `오늘: ${totalSets}세트 / 총 ${totalTime}초`;
     }
 
+    function drawWeekChart() {
+      const ctx = document.getElementById('weekChart').getContext('2d');
+      const weekDays = ['일', '월', '화', '수', '목', '금', '토'];
+      const dayCounts = new Array(7).fill(0);
+      runHistory.forEach(r => {
+        const d = new Date(r.date);
+        const day = d.getDay();
+        if (r.phase === '달리기') dayCounts[day]++;
+      });
+      if (window.weekChart) window.weekChart.destroy();
+      window.weekChart = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: weekDays,
+          datasets: [{
+            label: '세트 수',
+            data: dayCounts,
+            backgroundColor: '#00b894'
+          }]
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true }
+          }
+        }
+      });
+    }
+
     showSummary();
     drawChart();
+    drawWeekChart();
 
-    // 서비스워커 등록 (PWA)
     if ('serviceWorker' in navigator) {
       navigator.serviceWorker.register('service-worker.js');
     }
